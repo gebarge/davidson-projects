@@ -1,0 +1,111 @@
+---
+title: "CS 110 Final Project"
+author: "Genna Barge, Anna Catherine Wilson, Sarah Grace Clifton"
+date: "11/27/2023"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(tidyverse)
+library(tidycensus)
+library(tmap)
+library(sf)
+library(readxl)
+library(rgdal)
+library(cartogram)
+```
+
+# Getting the datasets
+```{r}
+nc_life_expectancy <- read_csv("NC_A (1).CSV")
+
+all_vars_acs5 <- 
+  load_variables(year = 2021, dataset = "acs5")
+
+#View(all_vars_acs5)
+```
+
+# Retrieving ACS Data
+
+```{r}
+racevars<- c(White = "B02001_002", 
+              Black = "B02001_003", 
+              Hispanic = "B03001_003",
+             Asian = "B02001_005")
+
+race_data <- get_acs(geography = "tract", variables = racevars,
+                      summary_var = "B02001_001", state = "NC", 
+                      year=2015, geometry = TRUE)
+
+incomevars<- c(White = "B19013A_001", 
+              Black = "B19013B_001", 
+              Hispanic = "B19013I_001",
+             Asian = "B19013D_001")
+
+income_data <- get_acs(geography = "tract", variables = incomevars,
+                      summary_var = "B19013_001", state = "NC", 
+                      year=2015, geometry = TRUE)
+
+health_insurance_data <- get_acs(geography = "tract", variables ="B27001_001",
+                      state = "NC", year=2015, geometry = TRUE)
+```
+
+# Maps and Graphs
+```{r}
+race_data <-  race_data %>% 
+  transform(GEOID = as.numeric(GEOID))
+join_left_race <- left_join(race_data, nc_life_expectancy, by = c("GEOID" = ("Tract ID"))) %>% 
+  mutate(pct = 100*(estimate / summary_est)) %>% 
+  mutate(`life_expectancy` = `e(0)`)
+
+income_data <-  income_data %>% 
+  transform(GEOID = as.numeric(GEOID))
+join_left_income <- left_join(income_data, nc_life_expectancy, by = c("GEOID" = ("Tract ID"))) %>% 
+  mutate(`life_expectancy` = `e(0)`)
+
+health_insurance_data <-  health_insurance_data %>% 
+  transform(GEOID = as.numeric(GEOID))
+join_left_insurance <- left_join(health_insurance_data, nc_life_expectancy, by = c("GEOID" = ("Tract ID"))) %>%
+  mutate(`life_expectancy` = `e(0)`)
+
+#map- life expectancy
+join_left_race %>%
+  tm_shape() +
+  tm_polygons("life_expectancy") + tm_layout(main.title = "North Carolina Life Expectancy", main.title.position = c("center", "top"), legend.outside =TRUE, legend.outside.position = "bottom")
+
+saveRDS(join_left_race, "join_left_race.RDS")
+
+#life expectancy vs percent race
+join_left_race %>% 
+ggplot(aes(x = life_expectancy,
+             y = pct, color = variable))+
+  geom_point()+
+  facet_wrap(~variable) + labs(title = "North Carolina Life Expectancy Divided by Race")
+
+#map plotting income
+join_left_income %>%
+  tm_shape() +
+  tm_polygons("summary_est", breaks = c(0, 25000, 35000, 50000, 75000, 100000, 150000, 200000))
+
+saveRDS(join_left_income, "join_left_income.RDS")
+
+#life expectancy vs health insurance
+#geom_smooth - life expectancy vs health insurance
+join_left_insurance %>% 
+ggplot(aes(x = life_expectancy,
+             y = estimate))+ geom_point() +
+  geom_smooth(se=FALSE)  + labs(title = "North Carolina Life Expectancy vs. Health Insurance Coverage")
+
+saveRDS(join_left_insurance, "join_left_insurance.RDS")
+
+```
